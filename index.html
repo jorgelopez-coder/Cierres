@@ -398,6 +398,10 @@
       </div>
     </div>
     <div class="field" style="margin-top:12px;">
+      <label>Fecha</label>
+      <input type="date" id="f-fecha" style="width:100%;padding:11px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:inherit;outline:none;transition:border .2s;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+    </div>
+    <div class="field" style="margin-top:12px;">
       <label>Turno</label>
       <div style="display:flex;gap:10px;margin-top:4px;">
         <label class="turno-opt" id="turno-opt-1">
@@ -439,6 +443,10 @@
         <label>Ventas por Plataformas (₡)</label>
         <input type="number" id="f-plataformas" placeholder="0" min="0" style="margin-bottom:4px;">
         <input type="text" id="f-plataformas-desc" placeholder="Ej: Uber Eats, Rappi, MercadoPago..." style="font-size:12px;padding:7px 12px;width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text2);outline:none;font-family:inherit;">
+      </div>
+      <div class="field">
+        <label>10% Servicio (₡)</label>
+        <input type="number" id="f-servicio" placeholder="0" min="0">
       </div>
     </div>
     <div class="dolar-section">
@@ -769,7 +777,7 @@ async function saveRecord(record) {
     efectivo: record.efectivo, tarjeta: record.tarjeta,
     sinpe: record.sinpe, otras: record.otras,
     totalVentas: record.totalVentas, fondo: record.fondo,
-    credito: record.credito, plataformas: record.plataformas, plataformasDesc: record.plataformasDesc,
+    credito: record.credito, plataformas: record.plataformas, plataformasDesc: record.plataformasDesc, servicio: record.servicio,
     caja: record.caja, diferencia: record.diferencia, obs: record.obs,
     d50000: record.denomDetalle[50000]||0,
     d20000: record.denomDetalle[20000]||0,
@@ -916,6 +924,7 @@ async function submitCierre() {
   const credito = parseFloat(document.getElementById('f-credito').value) || 0;
   const plataformas = parseFloat(document.getElementById('f-plataformas').value) || 0;
   const plataformasDesc = document.getElementById('f-plataformas-desc').value.trim();
+  const servicio = parseFloat(document.getElementById('f-servicio').value) || 0;
   const fondo = parseFloat(document.getElementById('f-fondo').value) || 0;
   const obs = document.getElementById('f-obs').value.trim();
   const usdEfectivo = parseFloat(document.getElementById('f-usd-efectivo').value) || 0;
@@ -938,9 +947,9 @@ async function submitCierre() {
 
   const record = {
     id: Date.now(),
-    fecha: today(),
+    fecha: document.getElementById('f-fecha').value || today(),
     hora: new Date().toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' }),
-    punto, encargado, turno, efectivo, tarjeta, sinpe, otras, credito, plataformas, plataformasDesc, totalVentas,
+    punto, encargado, turno, efectivo, tarjeta, sinpe, otras, credito, plataformas, plataformasDesc, servicio, totalVentas,
     usdEfectivo, usdTarjeta, tc, usdTotalCrc,
     caja, fondo, diferencia, obs, denomDetalle,
     usdDenomDetalle: Object.fromEntries(DENOMS_USD.map(({id,val}) => [id, parseInt(document.getElementById('d-'+id)?.value)||0])),
@@ -955,10 +964,11 @@ async function submitCierre() {
   btn.textContent = 'Enviar Cierre del Día ✓';
 
   // reset
-  ['f-efectivo','f-tarjeta','f-sinpe','f-otras','f-credito','f-plataformas','f-plataformas-desc','f-usd-efectivo','f-usd-tarjeta','f-fondo','f-obs']
+  ['f-efectivo','f-tarjeta','f-sinpe','f-otras','f-credito','f-plataformas','f-plataformas-desc','f-servicio','f-usd-efectivo','f-usd-tarjeta','f-fondo','f-obs']
     .forEach(id => document.getElementById(id).value = '');
   document.getElementById('f-punto').value = '';
   const encEl = document.getElementById('f-encargado'); if(encEl) encEl.value = '';
+  document.getElementById('f-fecha').value = today();
   resetTurno();
   DENOMS.forEach(d => { const el = document.getElementById('d-'+d); if(el) el.value=''; });
   DENOMS_USD.forEach(({id}) => { const el = document.getElementById('d-'+id); if(el) el.value=''; });
@@ -1117,6 +1127,7 @@ function enviarWhatsApp() {
 • SINPE: ₡${r.sinpe.toLocaleString('es-CR')}
 ${r.credito ? `• Crédito: ₡${r.credito.toLocaleString('es-CR')}` : ''}
 ${r.plataformas ? `• Plataformas: ₡${r.plataformas.toLocaleString('es-CR')}${r.plataformasDesc ? ' ('+r.plataformasDesc+')' : ''}` : ''}
+${r.servicio ? `• 10% Servicio: ₡${r.servicio.toLocaleString('es-CR')}` : ''}
 • Otras: ₡${r.otras.toLocaleString('es-CR')}
 • *Total: ₡${r.totalVentas.toLocaleString('es-CR')}*
 ${r.usdEfectivo||r.usdTarjeta ? `• 💵 Ventas en USD: $${((r.usdEfectivo||0)+(r.usdTarjeta||0)).toFixed(2)} (TC: ₡${(r.tc||0).toLocaleString('es-CR')})` : ''}
@@ -1252,6 +1263,7 @@ async function savePuntos() {
 
 // Init
 document.getElementById('dash-date').textContent = todayLabel();
+document.getElementById('f-fecha').value = today();
 (async () => {
   await loadConfig();
   populatePuntoSelect();
