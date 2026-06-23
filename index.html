@@ -298,6 +298,41 @@
   .turno-opt:hover { border-color: var(--accent); color: var(--text); }
   .turno-opt.selected { border-color: var(--accent); background: rgba(79,123,255,.12); color: var(--text); }
 
+
+  /* PIN MODAL */
+  .pin-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.7);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 999; backdrop-filter: blur(4px);
+  }
+  .pin-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 32px 28px; width: 300px;
+    text-align: center; box-shadow: var(--shadow);
+  }
+  .pin-box h2 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+  .pin-box p { font-size: 13px; color: var(--text2); margin-bottom: 24px; }
+  .pin-dots {
+    display: flex; justify-content: center; gap: 12px; margin-bottom: 24px;
+  }
+  .pin-dot {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--border); background: transparent;
+    transition: all .2s;
+  }
+  .pin-dot.filled { background: var(--accent); border-color: var(--accent); }
+  .pin-pad {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  }
+  .pin-key {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px; font-size: 18px; font-weight: 600;
+    cursor: pointer; color: var(--text); transition: all .2s;
+  }
+  .pin-key:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .pin-key.del { font-size: 14px; color: var(--text2); }
+  .pin-error { color: var(--warn); font-size: 13px; margin-top: 12px; min-height: 18px; }
+
   /* ADMIN PAGE */
   .admin-section { margin-bottom: 28px; }
   .admin-section h2 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
@@ -373,7 +408,6 @@
   <div class="nav-brand"><span>●</span> Cierre Diario</div>
   <div class="nav-tabs">
     <button class="tab-btn active" onclick="showPage('form')">📋 Registrar Cierre</button>
-    <button class="tab-btn" onclick="showPage('dashboard')">📊 Dashboard Gerencia</button>
     <button class="tab-btn" onclick="showPage('admin')">⚙️ Administración</button>
   </div>
 </nav>
@@ -638,21 +672,8 @@
   </div>
 
   <button class="submit-btn" onclick="submitCierre()">Guardar Cierre del Día ✓</button>
-  <button class="wa-btn" id="wa-btn" onclick="enviarWhatsApp()" disabled>
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.126 1.532 5.86L.057 23.428a.75.75 0 0 0 .916.916l5.569-1.475A11.943 11.943 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75a9.694 9.694 0 0 1-4.953-1.356l-.355-.211-3.706.981.993-3.614-.23-.372A9.699 9.699 0 0 1 2.25 12C2.25 6.615 6.615 2.25 12 2.25S21.75 6.615 21.75 12 17.385 21.75 12 21.75z"/></svg>
-    Enviar Resumen por WhatsApp
-  </button>
+  <div id="wa-btns-container" style="display:none;margin-top:10px;display:flex;flex-direction:column;gap:8px;"></div>
 </div>
-
-<!-- DASHBOARD PAGE -->
-<div class="page" id="page-dashboard">
-  <div class="dash-header">
-    <h1>Dashboard Gerencia</h1>
-    <div style="display:flex;gap:8px;align-items:center;">
-      <button class="refresh-btn" onclick="renderDashboard()">↻ Actualizar</button>
-      <div class="date-badge" id="dash-date"></div>
-    </div>
-  </div>
 
   <div id="dash-content"></div>
 </div>
@@ -755,6 +776,62 @@ async function saveEncargados() {
   showToast('✓ Encargados guardados');
 }
 
+
+// ---- PIN ACCESS ----
+const ADMIN_PIN = '2624';
+let pinBuffer = '';
+let adminUnlocked = false;
+
+function showPage(page) {
+  if (page === 'admin' && !adminUnlocked) {
+    document.getElementById('pin-overlay').style.display = 'flex';
+    pinBuffer = '';
+    updatePinDots();
+    return;
+  }
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  event.currentTarget.classList.add('active');
+}
+
+function pinPress(digit) {
+  if (pinBuffer.length >= 4) return;
+  pinBuffer += digit;
+  updatePinDots();
+  if (pinBuffer.length === 4) {
+    setTimeout(checkPin, 150);
+  }
+}
+
+function pinClear() {
+  pinBuffer = '';
+  updatePinDots();
+  document.getElementById('pin-error').textContent = '';
+}
+
+function updatePinDots() {
+  for (let i = 0; i < 4; i++) {
+    document.getElementById('dot-' + i).classList.toggle('filled', i < pinBuffer.length);
+  }
+}
+
+function checkPin() {
+  if (pinBuffer === ADMIN_PIN) {
+    adminUnlocked = true;
+    document.getElementById('pin-overlay').style.display = 'none';
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('page-admin').classList.add('active');
+    document.querySelector('[onclick="showPage(\'admin\')"]').classList.add('active');
+  } else {
+    document.getElementById('pin-error').textContent = 'PIN incorrecto, intentá de nuevo';
+    pinBuffer = '';
+    updatePinDots();
+    setTimeout(() => { document.getElementById('pin-error').textContent = ''; }, 2000);
+  }
+}
+
 // ---- TURNO ----
 function selectTurno(radio) {
   document.querySelectorAll('.turno-opt').forEach(l => l.classList.remove('selected'));
@@ -818,13 +895,7 @@ async function loadAll() {
 }
 
 // ---- UI ----
-function showPage(page) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('page-' + page).classList.add('active');
-  event.currentTarget.classList.add('active');
-  if (page === 'dashboard') renderDashboard();
-}
+// showPage moved to PIN section below
 
 function showToast(msg) {
   const t = document.getElementById('toast');
@@ -975,146 +1046,27 @@ async function submitCierre() {
   calcCuadre();
 
   lastRecord = record;
-  document.getElementById('wa-btn').disabled = false;
+  renderWAButtons(record);
   showToast('✓ Cierre registrado correctamente');
 }
 
-// ---- DASHBOARD ----
-async function renderDashboard() {
-  document.getElementById('dash-date').textContent = todayLabel();
-  const all = await loadAll();
-  const hoy = all.filter(r => r.fecha === today());
-
-  const puntos = getPuntos();
-
-  if (all.length === 0) {
-    document.getElementById('dash-content').innerHTML = `
-      <div class="empty-state">
-        <div class="icon">📭</div>
-        Aún no hay cierres registrados.<br>Pide a los puntos de venta que envíen su cierre del día.
-      </div>`;
-    return;
-  }
-
-  // KPIs hoy
-  const totalHoy = hoy.reduce((s,r) => s + r.totalVentas, 0);
-  const totalEfectivo = hoy.reduce((s,r) => s + r.efectivo, 0);
-  const ptosEnviaron = [...new Set(hoy.map(r => r.punto))].length;
-  const diferencias = hoy.filter(r => Math.abs(r.diferencia) > 100);
-
-  // Ayer
-  const ayer = new Date(); ayer.setDate(ayer.getDate()-1);
-  const ayerStr = ayer.toISOString().slice(0,10);
-  const totalAyer = all.filter(r => r.fecha === ayerStr).reduce((s,r) => s + r.totalVentas, 0);
-  const deltaPct = totalAyer ? ((totalHoy - totalAyer) / totalAyer * 100).toFixed(1) : null;
-  const deltaStr = deltaPct !== null
-    ? `<span class="${parseFloat(deltaPct)>=0?'up':'down'}">${parseFloat(deltaPct)>=0?'▲':'▼'} ${Math.abs(deltaPct)}% vs ayer</span>`
-    : '<span>Sin datos de ayer</span>';
-
-  // Máx para barras
-  const ptoTotales = puntos.map(p => {
-    const registros = hoy.filter(r => r.punto === p);
-    return { p, total: registros.reduce((s,r)=>s+r.totalVentas,0), enviado: registros.length > 0 };
-  });
-  const maxTotal = Math.max(...ptoTotales.map(x => x.total), 1);
-
-  // Historial (últimos 7 días únicos)
-  const fechas = [...new Set(all.map(r => r.fecha))].sort((a,b)=>b.localeCompare(a)).slice(0,7);
-
-  document.getElementById('dash-content').innerHTML = `
-    <div class="kpi-row">
-      <div class="kpi">
-        <div class="kpi-label">Total Ventas Hoy</div>
-        <div class="kpi-value green">${fmt(totalHoy)}</div>
-        <div class="kpi-delta">${deltaStr}</div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-label">Efectivo Total</div>
-        <div class="kpi-value blue">${fmt(totalEfectivo)}</div>
-        <div class="kpi-delta" style="color:var(--text3)">De cierres recibidos</div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-label">Puntos Reportados</div>
-        <div class="kpi-value ${ptosEnviaron===puntos.length?'green':'yellow'}">${ptosEnviaron}/${puntos.length}</div>
-        <div class="kpi-delta ${diferencias.length?'down':''}">${diferencias.length ? diferencias.length+' diferencia(s) de caja' : 'Sin diferencias'}</div>
-      </div>
-    </div>
-
-    <div class="section-title">Ventas por Punto de Venta — Hoy</div>
-    <div class="bars-grid">
-      ${ptoTotales.map(({p, total, enviado}) => {
-        const pct = Math.round((total / maxTotal) * 100);
-        const shortName = p.split(' — ')[1] || p;
-        return `<div class="bar-card">
-          <div class="bar-name">${shortName}</div>
-          <div class="bar-track">
-            <div class="bar-fill" style="height:${enviado ? Math.max(pct,5) : 5}%;${!enviado?'background:var(--surface2);':''}"></div>
-          </div>
-          <div class="bar-amount">${enviado ? fmt(total) : '—'}</div>
-          <div class="bar-sub">${enviado ? '✓ Reportado' : 'Pendiente'}</div>
-        </div>`;
-      }).join('')}
-    </div>
-
-    <div class="section-title">Detalle de Cierres de Hoy</div>
-    ${hoy.length === 0 ? '<div class="empty-state" style="padding:30px"><div class="icon">📋</div>Ningún punto ha enviado su cierre hoy aún.</div>' : `
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Punto</th><th>Encargado</th><th>Turno</th><th>Hora</th>
-            <th>Efectivo</th><th>Tarjeta</th><th>SINPE</th>
-            <th>Total</th><th>Dif. Caja</th><th>Estado</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${hoy.map(r => {
-            const difOk = Math.abs(r.diferencia) <= 100;
-            return `<tr>
-              <td><b>${r.punto.split(' — ')[1]||r.punto}</b></td>
-              <td>${r.encargado}</td>
-              <td><span class="badge" style="background:rgba(79,123,255,.1);color:var(--accent)">${r.turno||'—'}</span></td>
-              <td style="color:var(--text3)">${r.hora}</td>
-              <td class="mono">${fmt(r.efectivo)}</td>
-              <td class="mono">${fmt(r.tarjeta)}</td>
-              <td class="mono">${fmt(r.sinpe)}</td>
-              <td class="mono" style="font-weight:600;color:var(--accent2)">${fmt(r.totalVentas)}</td>
-              <td class="mono ${difOk?'':''}` + (r.diferencia>100?'" style="color:var(--warn)"':r.diferencia<-100?'" style="color:var(--warn)"':'" style="color:var(--accent2)"') + `>${r.diferencia>0?'+':''}${fmt(r.diferencia)}</td>
-              <td><span class="badge ${difOk?'badge-ok':'badge-warn'}">${difOk?'OK':'Revisar'}</span></td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>`}
-
-    <div class="section-title">Historial Reciente</div>
-    ${fechas.map(fecha => {
-      const registros = all.filter(r => r.fecha === fecha);
-      const total = registros.reduce((s,r)=>s+r.totalVentas,0);
-      const ptos = [...new Set(registros.map(r => r.punto.split(' — ')[1] || r.punto))].join(', ');
-      const d = new Date(fecha + 'T12:00:00');
-      const label = d.toLocaleDateString('es-CR', { weekday:'short', day:'numeric', month:'short' });
-      return `<div class="history-row">
-        <div class="history-dot"></div>
-        <div class="history-date">${label}</div>
-        <div class="history-pts">${registros.length} cierre(s) · ${ptos}</div>
-        <div class="history-total">${fmt(total)}</div>
-      </div>`;
-    }).join('')}
-  `;
-}
 
 
 // ---- WHATSAPP ----
-const WA_NUMBER = '50688301564';
+const WA_NUMBER_DEFAULT = '50688301564';
 let lastRecord = null;
 
-function enviarWhatsApp() {
-  if (!lastRecord) return;
-  const r = lastRecord;
+function getWAsForPunto(puntoNombre) {
+  const puntos = getPuntos();
+  const p = puntos.find(p => p.nombre === puntoNombre);
+  const nums = p ? (p.whatsapps || [p.whatsapp]).filter(w => w && w.length > 5) : [];
+  return nums.length ? nums.map(w => w.replace(/[^0-9]/g,'')) : [WA_NUMBER_DEFAULT];
+}
+
+function buildWAMessage(r) {
   const difSigno = r.diferencia >= 0 ? '+' : '';
   const difEmoji = Math.abs(r.diferencia) <= 500 ? '✅' : '⚠️';
-  const fecha = new Date(r.fecha + 'T12:00:00').toLocaleDateString('es-CR', {day:'numeric', month:'long', year:'numeric'});
+  const fecha = new Date((r.fecha||today()) + 'T12:00:00').toLocaleDateString('es-CR', {day:'numeric', month:'long', year:'numeric'});
 
   const msg =
 `📊 *Cierre del Día — ${r.punto}*
@@ -1138,14 +1090,35 @@ ${r.usdEfectivo||r.usdTarjeta ? `• 💵 Ventas en USD: $${((r.usdEfectivo||0)+
 ${r.obs ? `
 📝 *Observaciones:* ${r.obs}` : ''}`;
 
-  const url = 'https://wa.me/' + WA_NUMBER + '?text=' + encodeURIComponent(msg);
-  window.open(url, '_blank');
+  return msg;
 }
+
+function renderWAButtons(record) {
+  const container = document.getElementById('wa-btns-container');
+  if (!container) return;
+  const numbers = getWAsForPunto(record.punto);
+  const msg = buildWAMessage(record);
+  const WA_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.126 1.532 5.86L.057 23.428a.75.75 0 0 0 .916.916l5.569-1.475A11.943 11.943 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75a9.694 9.694 0 0 1-4.953-1.356l-.355-.211-3.706.981.993-3.614-.23-.372A9.699 9.699 0 0 1 2.25 12C2.25 6.615 6.615 2.25 12 2.25S21.75 6.615 21.75 12 17.385 21.75 12 21.75z"/></svg>`;
+  container.style.display = 'flex';
+  container.innerHTML = numbers.map((num, idx) =>
+    `<button class="wa-btn" onclick="window.open('https://wa.me/${num}?text='+encodeURIComponent(buildWAMessage(lastRecord)),'_blank')">
+      ${WA_SVG} Enviar por WhatsApp${numbers.length > 1 ? ' — +' + num : ''}
+    </button>`
+  ).join('');
+}
+
+function enviarWhatsApp() {}
 
 
 // ---- STORAGE KEYS ----
 // ---- CONFIG EN GOOGLE SHEETS ----
-const DEFAULT_PUNTOS = ['Punto 1 — Central','Punto 2 — Norte','Punto 3 — Sur','Punto 4 — Este','Punto 5 — Oeste'];
+const DEFAULT_PUNTOS = [
+  {nombre:'Punto 1 — Central', whatsapps:['']},
+  {nombre:'Punto 2 — Norte', whatsapps:['']},
+  {nombre:'Punto 3 — Sur', whatsapps:['']},
+  {nombre:'Punto 4 — Este', whatsapps:['']},
+  {nombre:'Punto 5 — Oeste', whatsapps:['']}
+];
 const DEFAULT_ENCARGADOS_LIST = [];
 let _config = null; // cache en memoria
 
@@ -1173,7 +1146,9 @@ async function saveConfig() {
 }
 
 function getPuntos() {
-  return _config ? _config.puntos : DEFAULT_PUNTOS;
+  const pts = _config ? _config.puntos : DEFAULT_PUNTOS;
+  // normalize: support both old string format and new object format
+  return pts.map(p => typeof p === 'string' ? {nombre: p, whatsapps: ['']} : (p.whatsapp !== undefined ? {nombre: p.nombre, whatsapps: [p.whatsapp]} : p));
 }
 function getEncargados() {
   return _config ? (_config.encargados || []) : [];
@@ -1187,7 +1162,7 @@ function populatePuntoSelect() {
   const sel = document.getElementById('f-punto');
   if (!sel) return;
   const puntos = getPuntos();
-  sel.innerHTML = '<option value="">Seleccionar...</option>' + puntos.map(p => `<option>${p}</option>`).join('');
+  sel.innerHTML = '<option value="">Seleccionar...</option>' + puntos.map(p => `<option value="${p.nombre}">${p.nombre}</option>`).join('');
 }
 
 // ---- TIPO DE CAMBIO ----
@@ -1224,21 +1199,50 @@ function renderPuntosList() {
   list.innerHTML = puntos.length === 0
     ? '<p style="color:var(--text3);font-size:13px;padding:8px 0;">Sin puntos configurados.</p>'
     : puntos.map((p, i) => `
-    <div class="punto-item" data-i="${i}">
-      <span class="punto-drag">⠿</span>
-      <input type="text" value="${p}" oninput="updatePuntoTemp(${i}, this.value)">
-      <button class="del-btn" onclick="deletePunto(${i})">×</button>
+    <div class="punto-item" style="flex-direction:column;align-items:stretch;gap:6px;" data-i="${i}">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="punto-drag">⠿</span>
+        <input type="text" value="${p.nombre}" placeholder="Nombre del punto" oninput="updatePuntoNombre(${i}, this.value)" style="flex:1;">
+        <button class="del-btn" onclick="deletePunto(${i})">×</button>
+      </div>
+      <div id="wa-fields-${i}" style="display:flex;flex-direction:column;gap:6px;padding-left:24px;">
+        ${(p.whatsapps||['']).map((wa, j) => `
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-size:11px;color:var(--text3);white-space:nowrap;">📱</span>
+          <input type="tel" value="${wa}" placeholder="+506 8888-7777" oninput="updatePuntoWA(${i}, ${j}, this.value)" style="flex:1;font-size:13px;">
+          ${j > 0 ? `<button class="del-btn" style="font-size:14px;" onclick="removeWA(${i}, ${j})">×</button>` : ''}
+        </div>`).join('')}
+      </div>
+      <div style="padding-left:24px;">
+        <button onclick="addWA(${i})" style="background:none;border:1px dashed var(--border);border-radius:6px;padding:4px 10px;color:var(--text3);font-size:12px;cursor:pointer;">+ número</button>
+      </div>
     </div>`).join('');
 }
 
 let tempPuntos = null;
-function updatePuntoTemp(i, val) {
-  if (!tempPuntos) tempPuntos = [...getPuntos()];
-  tempPuntos[i] = val;
+function updatePuntoNombre(i, val) {
+  if (!tempPuntos) tempPuntos = getPuntos().map(p => ({...p}));
+  tempPuntos[i].nombre = val;
+}
+function updatePuntoWA(i, j, val) {
+  if (!tempPuntos) tempPuntos = getPuntos().map(p => ({...p, whatsapps: [...(p.whatsapps||[''])]}));
+  tempPuntos[i].whatsapps[j] = val.replace(/[^0-9+]/g, '');
+}
+function addWA(i) {
+  if (!tempPuntos) tempPuntos = getPuntos().map(p => ({...p, whatsapps: [...(p.whatsapps||[''])]}));
+  tempPuntos[i].whatsapps.push('');
+  _config.puntos = tempPuntos;
+  renderPuntosList();
+}
+function removeWA(i, j) {
+  if (!tempPuntos) tempPuntos = getPuntos().map(p => ({...p, whatsapps: [...(p.whatsapps||[''])]}));
+  tempPuntos[i].whatsapps.splice(j, 1);
+  _config.puntos = tempPuntos;
+  renderPuntosList();
 }
 function addPunto() {
   if (!tempPuntos) tempPuntos = [...getPuntos()];
-  tempPuntos.push('Nuevo Punto');
+  tempPuntos.push({nombre: 'Nuevo Punto', whatsapps: ['']});
   _config.puntos = tempPuntos;
   renderPuntosList();
   populatePuntoSelect();
@@ -1251,8 +1255,13 @@ function deletePunto(i) {
   renderPuntosList();
 }
 async function savePuntos() {
-  const items = document.querySelectorAll('#puntos-list .punto-item input');
-  const puntos = [...items].map(i => i.value.trim()).filter(Boolean);
+  const items = document.querySelectorAll('#puntos-list .punto-item');
+  const puntos = [...items].map(item => {
+    const nombreInput = item.querySelector('input[type="text"]');
+    const waInputs = item.querySelectorAll('input[type="tel"]');
+    const whatsapps = [...waInputs].map(i => i.value.trim().replace(/[^0-9+]/g,'')).filter(Boolean);
+    return { nombre: nombreInput.value.trim(), whatsapps: whatsapps.length ? whatsapps : [''] };
+  }).filter(p => p.nombre);
   if (!puntos.length) { showToast('⚠️ Agregá al menos un punto'); return; }
   _config.puntos = puntos;
   tempPuntos = null;
@@ -1262,7 +1271,6 @@ async function savePuntos() {
 }
 
 // Init
-document.getElementById('dash-date').textContent = todayLabel();
 document.getElementById('f-fecha').value = today();
 (async () => {
   await loadConfig();
@@ -1284,6 +1292,36 @@ const ro = new ResizeObserver(reportHeight);
 ro.observe(document.body);
 window.addEventListener('load', reportHeight);
 </script>
+
+
+<!-- PIN MODAL -->
+<div class="pin-overlay" id="pin-overlay" style="display:none;">
+  <div class="pin-box">
+    <h2>🔒 Administración</h2>
+    <p>Ingresá el PIN para continuar</p>
+    <div class="pin-dots">
+      <div class="pin-dot" id="dot-0"></div>
+      <div class="pin-dot" id="dot-1"></div>
+      <div class="pin-dot" id="dot-2"></div>
+      <div class="pin-dot" id="dot-3"></div>
+    </div>
+    <div class="pin-pad">
+      <button class="pin-key" onclick="pinPress('1')">1</button>
+      <button class="pin-key" onclick="pinPress('2')">2</button>
+      <button class="pin-key" onclick="pinPress('3')">3</button>
+      <button class="pin-key" onclick="pinPress('4')">4</button>
+      <button class="pin-key" onclick="pinPress('5')">5</button>
+      <button class="pin-key" onclick="pinPress('6')">6</button>
+      <button class="pin-key" onclick="pinPress('7')">7</button>
+      <button class="pin-key" onclick="pinPress('8')">8</button>
+      <button class="pin-key" onclick="pinPress('9')">9</button>
+      <button class="pin-key del" onclick="pinClear()">✕ Borrar</button>
+      <button class="pin-key" onclick="pinPress('0')">0</button>
+      <div></div>
+    </div>
+    <div class="pin-error" id="pin-error"></div>
+  </div>
+</div>
 
 </body>
 </html>
