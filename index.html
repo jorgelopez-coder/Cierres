@@ -847,27 +847,27 @@ function resetTurno() {
 }
 
 // ---- GOOGLE SHEETS ----
-async function saveRecord(record) {
-  const payload = {
+function buildPayload(record) {
+  return {
     id: record.id,
     fecha: record.fecha,
     hora: record.hora,
     punto: record.punto,
     encargado: record.encargado,
     turno: record.turno,
-    efectivo: record.efectivo,
-    tarjeta: record.tarjeta,
-    sinpe: record.sinpe,
-    otras: record.otras,
-    credito: record.credito,
-    plataformas: record.plataformas,
-    plataformasDesc: record.plataformasDesc,
-    servicio: record.servicio,
-    totalVentas: record.totalVentas,
-    fondo: record.fondo,
-    caja: record.caja,
-    diferencia: record.diferencia,
-    obs: record.obs,
+    efectivo: record.efectivo||0,
+    tarjeta: record.tarjeta||0,
+    sinpe: record.sinpe||0,
+    otras: record.otras||0,
+    credito: record.credito||0,
+    plataformas: record.plataformas||0,
+    plataformasDesc: record.plataformasDesc||'',
+    servicio: record.servicio||0,
+    totalVentas: record.totalVentas||0,
+    fondo: record.fondo||0,
+    caja: record.caja||0,
+    diferencia: record.diferencia||0,
+    obs: record.obs||'',
     d50000: (record.denomDetalle||{})[50000]||0,
     d20000: (record.denomDetalle||{})[20000]||0,
     d10000: (record.denomDetalle||{})[10000]||0,
@@ -891,7 +891,6 @@ async function saveRecord(record) {
     usdD5:   (record.usdDenomDetalle||{}).usd5||0,
     usdD1:   (record.usdDenomDetalle||{}).usd1||0,
     usdCajaTotalContado: record.usdCajaTotalContado||0,
-    // Resumen cuadre
     cajaTotalContada: record.caja||0,
     fondoCajaInicial: record.fondo||0,
     efectivoEsperado: (record.efectivo||0) + (record.fondo||0),
@@ -900,36 +899,50 @@ async function saveRecord(record) {
     usdReportadoVentas: record.usdEfectivo||0,
     diferenciaUsd: (record.usdCajaTotalContado||0) - (record.usdEfectivo||0),
   };
+}
 
-  // Use hidden form POST — most reliable method for Apps Script from external origins
-  return new Promise((resolve) => {
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = SHEETS_URL;
-    form.target = 'hidden-iframe';
-    form.style.display = 'none';
+async function saveRecord(record) {
+  const payload = buildPayload(record);
+  console.log('Enviando cierre:', payload);
 
-    const input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = 'payload';
-    input.value = JSON.stringify(payload);
-    form.appendChild(input);
-
-    let iframe = document.getElementById('hidden-iframe');
-    if (!iframe) {
-      iframe = document.createElement('iframe');
-      iframe.name = 'hidden-iframe';
-      iframe.id = 'hidden-iframe';
-      iframe.style.display = 'none';
-      document.body.appendChild(iframe);
-    }
-
-    iframe.onload = () => resolve();
-    document.body.appendChild(form);
-    form.submit();
-    document.body.removeChild(form);
-    setTimeout(resolve, 3000); // fallback resolve after 3s
-  });
+  try {
+    // Method 1: fetch with no-cors
+    await fetch(SHEETS_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+    });
+    console.log('Fetch enviado (no-cors)');
+  } catch(err) {
+    console.error('Fetch falló, intentando form POST:', err);
+    // Method 2: fallback form POST
+    await new Promise((resolve) => {
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = SHEETS_URL;
+      form.target = 'hidden-iframe';
+      form.style.display = 'none';
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'payload';
+      input.value = JSON.stringify(payload);
+      form.appendChild(input);
+      let iframe = document.getElementById('hidden-iframe');
+      if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.name = 'hidden-iframe';
+        iframe.id = 'hidden-iframe';
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+      }
+      iframe.onload = () => resolve();
+      document.body.appendChild(form);
+      form.submit();
+      document.body.removeChild(form);
+      setTimeout(resolve, 3000);
+    });
+  }
 }
 
 async function loadAll() {
