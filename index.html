@@ -689,18 +689,11 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyZCrmDraeiriAzKZD0dqv7DCfLiZMiJuKu1ZnZQzPOQJfe42FBaDxM0VQ7DnhVVgYB/exec';
+const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbzmD14g68vackct_Wz-bvLcJ-38GlOR007e9tmDvJXN-3G63BvCDDVJCvDuHE0nR6r7OA/exec';
 
 
 
 // ---- ENCARGADOS ----
-const ENCARGADOS_KEY = 'admin_encargados';
-const DEFAULT_ENCARGADOS = [];
-
-function getEncargados() {
-  try { return JSON.parse(localStorage.getItem(ENCARGADOS_KEY)) || DEFAULT_ENCARGADOS; } catch(e) { return DEFAULT_ENCARGADOS; }
-}
-
 function populateEncargadoSelect() {
   const sel = document.getElementById('f-encargado');
   if (!sel) return;
@@ -715,7 +708,7 @@ function renderEncargadosList() {
   if (!list) return;
   const encargados = tempEncargados || getEncargados();
   list.innerHTML = encargados.length === 0
-    ? '<p style="color:var(--text3);font-size:13px;padding:8px 0;">Sin encargados configurados — el formulario usará texto libre.</p>'
+    ? '<p style="color:var(--text3);font-size:13px;padding:8px 0;">Sin encargados configurados.</p>'
     : encargados.map((e, i) => `
     <div class="punto-item" data-i="${i}">
       <span class="punto-drag">⠿</span>
@@ -725,31 +718,31 @@ function renderEncargadosList() {
 }
 
 function updateEncargadoTemp(i, val) {
-  if (!tempEncargados) tempEncargados = getEncargados();
+  if (!tempEncargados) tempEncargados = [...getEncargados()];
   tempEncargados[i] = val;
 }
 
 function addEncargado() {
-  const enc = tempEncargados || getEncargados();
-  enc.push('Nuevo Encargado');
-  tempEncargados = enc;
-  localStorage.setItem(ENCARGADOS_KEY, JSON.stringify(enc));
+  if (!tempEncargados) tempEncargados = [...getEncargados()];
+  tempEncargados.push('Nuevo Encargado');
+  _config.encargados = tempEncargados;
   renderEncargadosList();
   populateEncargadoSelect();
 }
 
 function deleteEncargado(i) {
-  const enc = tempEncargados || getEncargados();
-  enc.splice(i, 1);
-  tempEncargados = enc;
+  if (!tempEncargados) tempEncargados = [...getEncargados()];
+  tempEncargados.splice(i, 1);
+  _config.encargados = tempEncargados;
   renderEncargadosList();
 }
 
-function saveEncargados() {
+async function saveEncargados() {
   const items = document.querySelectorAll('#encargados-list .punto-item input');
   const enc = [...items].map(i => i.value.trim()).filter(Boolean);
-  localStorage.setItem(ENCARGADOS_KEY, JSON.stringify(enc));
+  _config.encargados = enc;
   tempEncargados = null;
+  await saveConfig();
   populateEncargadoSelect();
   showToast('✓ Encargados guardados');
 }
@@ -1140,21 +1133,48 @@ ${r.obs ? `
 
 
 // ---- STORAGE KEYS ----
-const PUNTOS_KEY = 'admin_puntos';
-const TC_KEY = 'admin_tc';
+// ---- CONFIG EN GOOGLE SHEETS ----
 const DEFAULT_PUNTOS = ['Punto 1 — Central','Punto 2 — Norte','Punto 3 — Sur','Punto 4 — Este','Punto 5 — Oeste'];
+const DEFAULT_ENCARGADOS_LIST = [];
+let _config = null; // cache en memoria
 
-// ---- LOCAL CONFIG (persisted in localStorage) ----
+async function loadConfig() {
+  try {
+    const resp = await fetch(SHEETS_URL + '?action=getConfig');
+    const data = await resp.json();
+    if (data.config) {
+      _config = data.config;
+    } else {
+      _config = { puntos: DEFAULT_PUNTOS, encargados: DEFAULT_ENCARGADOS_LIST, tc: 0 };
+    }
+  } catch(e) {
+    _config = { puntos: DEFAULT_PUNTOS, encargados: DEFAULT_ENCARGADOS_LIST, tc: 0 };
+  }
+}
+
+async function saveConfig() {
+  await fetch(SHEETS_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ type: 'saveConfig', config: _config })
+  });
+}
+
 function getPuntos() {
-  try { return JSON.parse(localStorage.getItem(PUNTOS_KEY)) || DEFAULT_PUNTOS; } catch(e) { return DEFAULT_PUNTOS; }
+  return _config ? _config.puntos : DEFAULT_PUNTOS;
+}
+function getEncargados() {
+  return _config ? (_config.encargados || []) : [];
 }
 function getTC() {
-  return parseFloat(localStorage.getItem(TC_KEY)) || 0;
+  return _config ? (_config.tc || 0) : 0;
 }
 
-// ---- POPULATE SELECT ----
+// ---- POPULATE SELECTS ----
 function populatePuntoSelect() {
   const sel = document.getElementById('f-punto');
+  if (!sel) return;
   const puntos = getPuntos();
   sel.innerHTML = '<option value="">Seleccionar...</option>' + puntos.map(p => `<option>${p}</option>`).join('');
 }
@@ -1168,10 +1188,11 @@ function updateTCDisplay() {
   if (adminEl && tc > 0) adminEl.value = tc;
 }
 
-function saveTipoCambio() {
+async function saveTipoCambio() {
   const val = parseFloat(document.getElementById('admin-tc').value);
   if (!val || val < 1) { showToast('⚠️ Ingresá un tipo de cambio válido'); return; }
-  localStorage.setItem(TC_KEY, val);
+  _config.tc = val;
+  await saveConfig();
   updateTCDisplay();
   showToast('✓ Tipo de cambio guardado: ₡' + val.toLocaleString('es-CR') + ' por $1');
 }
@@ -1189,7 +1210,9 @@ function renderPuntosList() {
   const puntos = getPuntos();
   const list = document.getElementById('puntos-list');
   if (!list) return;
-  list.innerHTML = puntos.map((p, i) => `
+  list.innerHTML = puntos.length === 0
+    ? '<p style="color:var(--text3);font-size:13px;padding:8px 0;">Sin puntos configurados.</p>'
+    : puntos.map((p, i) => `
     <div class="punto-item" data-i="${i}">
       <span class="punto-drag">⠿</span>
       <input type="text" value="${p}" oninput="updatePuntoTemp(${i}, this.value)">
@@ -1199,41 +1222,44 @@ function renderPuntosList() {
 
 let tempPuntos = null;
 function updatePuntoTemp(i, val) {
-  if (!tempPuntos) tempPuntos = getPuntos();
+  if (!tempPuntos) tempPuntos = [...getPuntos()];
   tempPuntos[i] = val;
 }
 function addPunto() {
-  const puntos = tempPuntos || getPuntos();
-  puntos.push('Nuevo Punto');
-  tempPuntos = puntos;
-  localStorage.setItem(PUNTOS_KEY, JSON.stringify(puntos));
+  if (!tempPuntos) tempPuntos = [...getPuntos()];
+  tempPuntos.push('Nuevo Punto');
+  _config.puntos = tempPuntos;
   renderPuntosList();
   populatePuntoSelect();
 }
 function deletePunto(i) {
-  const puntos = tempPuntos || getPuntos();
-  if (puntos.length <= 1) { showToast('⚠️ Debe haber al menos un punto'); return; }
-  puntos.splice(i, 1);
-  tempPuntos = puntos;
+  if (!tempPuntos) tempPuntos = [...getPuntos()];
+  if (tempPuntos.length <= 1) { showToast('⚠️ Debe haber al menos un punto'); return; }
+  tempPuntos.splice(i, 1);
+  _config.puntos = tempPuntos;
   renderPuntosList();
 }
-function savePuntos() {
+async function savePuntos() {
   const items = document.querySelectorAll('#puntos-list .punto-item input');
   const puntos = [...items].map(i => i.value.trim()).filter(Boolean);
   if (!puntos.length) { showToast('⚠️ Agregá al menos un punto'); return; }
-  localStorage.setItem(PUNTOS_KEY, JSON.stringify(puntos));
+  _config.puntos = puntos;
   tempPuntos = null;
+  await saveConfig();
   populatePuntoSelect();
   showToast('✓ Puntos de venta guardados');
 }
 
 // Init
 document.getElementById('dash-date').textContent = todayLabel();
-populatePuntoSelect();
-renderPuntosList();
-renderEncargadosList();
-populateEncargadoSelect();
-updateTCDisplay();
+(async () => {
+  await loadConfig();
+  populatePuntoSelect();
+  populateEncargadoSelect();
+  renderPuntosList();
+  renderEncargadosList();
+  updateTCDisplay();
+})();
 </script>
 
 <script>
