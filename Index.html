@@ -718,7 +718,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbzb43tRml6-6w4ZS3M6VuXcwkJrNOE_gaMlxCPb2pvJ-EDx6y3eUuhV6ypxTZvj61SMTQ/exec';
+const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbzBhuhZC1Ks3x0KIkkoQt68BGF-GJzQOH1vybZTUzAmMUAJIjJ9Us0k3V3-F6aLg-RuhA/exec';
 
 
 
@@ -901,11 +901,34 @@ async function saveRecord(record) {
     diferenciaUsd: (record.usdCajaTotalContado||0) - (record.usdEfectivo||0),
   };
 
-  const resp = await fetch(SHEETS_URL, {
-    method: 'POST',
-    mode: 'no-cors',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify(payload),
+  // Use hidden form POST — most reliable method for Apps Script from external origins
+  return new Promise((resolve) => {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = SHEETS_URL;
+    form.target = 'hidden-iframe';
+    form.style.display = 'none';
+
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'payload';
+    input.value = JSON.stringify(payload);
+    form.appendChild(input);
+
+    let iframe = document.getElementById('hidden-iframe');
+    if (!iframe) {
+      iframe = document.createElement('iframe');
+      iframe.name = 'hidden-iframe';
+      iframe.id = 'hidden-iframe';
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
+    }
+
+    iframe.onload = () => resolve();
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+    setTimeout(resolve, 3000); // fallback resolve after 3s
   });
 }
 
@@ -1168,11 +1191,33 @@ async function loadConfig() {
 }
 
 async function saveConfig() {
-  await fetch(SHEETS_URL, {
-    method: 'POST',
-    mode: 'no-cors',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({ type: 'saveConfig', config: _config })
+  await new Promise((resolve) => {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = SHEETS_URL;
+    form.target = 'hidden-iframe';
+    form.style.display = 'none';
+
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'payload';
+    input.value = JSON.stringify({ type: 'saveConfig', config: _config });
+    form.appendChild(input);
+
+    let iframe = document.getElementById('hidden-iframe');
+    if (!iframe) {
+      iframe = document.createElement('iframe');
+      iframe.name = 'hidden-iframe';
+      iframe.id = 'hidden-iframe';
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
+    }
+
+    iframe.onload = () => resolve();
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+    setTimeout(resolve, 3000);
   });
 }
 
